@@ -1,0 +1,185 @@
+CREATE TABLE public.material_categories (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name character varying NOT NULL UNIQUE,
+  description text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT material_categories_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.material_receipt_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  receipt_id uuid NOT NULL,
+  material_id uuid NOT NULL,
+  pack_qty numeric NOT NULL CHECK (pack_qty > 0::numeric),
+  units_per_pack numeric NOT NULL CHECK (units_per_pack > 0::numeric),
+  total_units numeric DEFAULT (pack_qty * units_per_pack),
+  unit_cost numeric NOT NULL CHECK (unit_cost >= 0::numeric),
+  line_total numeric DEFAULT ((pack_qty * units_per_pack) * unit_cost),
+  CONSTRAINT material_receipt_items_pkey PRIMARY KEY (id),
+  CONSTRAINT material_receipt_items_receipt_id_fkey FOREIGN KEY (receipt_id) REFERENCES public.material_receipts(id),
+  CONSTRAINT material_receipt_items_material_id_fkey FOREIGN KEY (material_id) REFERENCES public.materials(id)
+);
+CREATE TABLE public.material_receipts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  receipt_no character varying NOT NULL UNIQUE,
+  supplier_id uuid,
+  received_by uuid,
+  received_date timestamp with time zone NOT NULL DEFAULT now(),
+  note text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT material_receipts_pkey PRIMARY KEY (id),
+  CONSTRAINT material_receipts_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
+  CONSTRAINT material_receipts_received_by_fkey FOREIGN KEY (received_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.materials (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  category_id uuid,
+  code character varying NOT NULL UNIQUE,
+  name character varying NOT NULL,
+  base_unit character varying NOT NULL,
+  qty_on_hand numeric NOT NULL DEFAULT 0 CHECK (qty_on_hand >= 0::numeric),
+  reorder_level numeric NOT NULL DEFAULT 0 CHECK (reorder_level >= 0::numeric),
+  last_cost_per_unit numeric NOT NULL DEFAULT 0 CHECK (last_cost_per_unit >= 0::numeric),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT materials_pkey PRIMARY KEY (id),
+  CONSTRAINT materials_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.material_categories(id)
+);
+CREATE TABLE public.members (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  member_code character varying NOT NULL UNIQUE,
+  full_name character varying NOT NULL,
+  phone character varying,
+  email character varying,
+  address text,
+  member_level character varying NOT NULL DEFAULT 'normal'::character varying CHECK (member_level::text = ANY (ARRAY['normal'::character varying, 'vip'::character varying]::text[])),
+  points integer NOT NULL DEFAULT 0 CHECK (points >= 0),
+  status character varying NOT NULL DEFAULT 'active'::character varying CHECK (status::text = ANY (ARRAY['active'::character varying, 'inactive'::character varying]::text[])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT members_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.order_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  qty numeric NOT NULL CHECK (qty > 0::numeric),
+  unit_price numeric NOT NULL,
+  line_total numeric DEFAULT (qty * unit_price),
+  CONSTRAINT order_items_pkey PRIMARY KEY (id),
+  CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.orders (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_no character varying NOT NULL UNIQUE,
+  order_source character varying NOT NULL CHECK (order_source::text = ANY (ARRAY['web'::character varying, 'walk_in'::character varying]::text[])),
+  member_id uuid,
+  created_by_user_id uuid,
+  status character varying NOT NULL DEFAULT 'pending_payment'::character varying,
+  total_amount numeric NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id),
+  CONSTRAINT orders_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.members(id)
+);
+CREATE TABLE public.payment_types (
+  id bigint NOT NULL DEFAULT nextval('payment_types_id_seq'::regclass),
+  name character varying NOT NULL UNIQUE,
+  description text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT payment_types_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.payments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  payment_method character varying NOT NULL CHECK (payment_method::text = ANY (ARRAY['bank_transfer'::character varying, 'cash'::character varying, 'qr'::character varying]::text[])),
+  payment_status character varying NOT NULL DEFAULT 'pending'::character varying,
+  reviewed_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  payment_type_id bigint,
+  slip_transfer_datetime timestamp without time zone,
+  transaction_last4 character varying,
+  payment_amount numeric,
+  slip_image_url text,
+  CONSTRAINT payments_pkey PRIMARY KEY (id),
+  CONSTRAINT payments_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT fk_payments_payment_type FOREIGN KEY (payment_type_id) REFERENCES public.payment_types(id),
+  CONSTRAINT payments_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.product_categories (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name character varying NOT NULL UNIQUE,
+  description text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT product_categories_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.production_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL,
+  qty_produced numeric NOT NULL CHECK (qty_produced > 0::numeric),
+  produced_by uuid,
+  produced_date timestamp with time zone NOT NULL DEFAULT now(),
+  note text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT production_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT production_logs_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT production_logs_produced_by_fkey FOREIGN KEY (produced_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  category_id uuid,
+  sku character varying NOT NULL UNIQUE,
+  name character varying NOT NULL,
+  description text,
+  sell_price numeric NOT NULL DEFAULT 0 CHECK (sell_price >= 0::numeric),
+  stock_qty numeric NOT NULL DEFAULT 0 CHECK (stock_qty >= 0::numeric),
+  image_url text,
+  status character varying NOT NULL DEFAULT 'active'::character varying CHECK (status::text = ANY (ARRAY['active'::character varying, 'inactive'::character varying]::text[])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_by uuid,
+  CONSTRAINT products_pkey PRIMARY KEY (id),
+  CONSTRAINT products_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT products_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id),
+  CONSTRAINT products_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.product_categories(id)
+);
+CREATE TABLE public.stock_movements (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  item_type character varying NOT NULL CHECK (item_type::text = ANY (ARRAY['material'::character varying, 'product'::character varying]::text[])),
+  movement_type character varying NOT NULL CHECK (movement_type::text = ANY (ARRAY['receive'::character varying, 'issue'::character varying, 'produce_in'::character varying, 'sale_out'::character varying, 'adjust'::character varying]::text[])),
+  ref_table character varying NOT NULL CHECK (ref_table::text = ANY (ARRAY['material_receipts'::character varying, 'production_logs'::character varying, 'orders'::character varying, 'manual'::character varying]::text[])),
+  ref_id uuid,
+  material_id uuid,
+  product_id uuid,
+  qty_in numeric NOT NULL DEFAULT 0,
+  qty_out numeric NOT NULL DEFAULT 0,
+  balance_after numeric,
+  created_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT stock_movements_pkey PRIMARY KEY (id),
+  CONSTRAINT stock_movements_material_id_fkey FOREIGN KEY (material_id) REFERENCES public.materials(id),
+  CONSTRAINT stock_movements_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT stock_movements_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.suppliers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name character varying NOT NULL,
+  contact_name character varying,
+  phone character varying,
+  address text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT suppliers_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.users (
+  id uuid NOT NULL,
+  member_id uuid,
+  username character varying UNIQUE,
+  email character varying NOT NULL UNIQUE,
+  full_name character varying,
+  phone character varying,
+  role character varying NOT NULL DEFAULT 'customer'::character varying CHECK (role::text = ANY (ARRAY['admin'::character varying, 'staff'::character varying, 'customer'::character varying]::text[])),
+  status character varying NOT NULL DEFAULT 'active'::character varying CHECK (status::text = ANY (ARRAY['active'::character varying, 'inactive'::character varying]::text[])),
+  created_at timestamp with ti
